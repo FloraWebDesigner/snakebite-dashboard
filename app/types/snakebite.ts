@@ -97,7 +97,7 @@ export type SnakebiteDbRecord = {
   'Presumptive': string | null;
   'SAV Nums': number | null;
   'Treatment given19': string | null;
-  'SAV Volumn': string | null;
+'SAV Volumn': number | null; 
   'Treatment given21': string | null;
   'Treatment given22': string | null;
   'Treatment given23': string | null;

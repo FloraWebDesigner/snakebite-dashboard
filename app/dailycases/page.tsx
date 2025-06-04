@@ -4,6 +4,8 @@ import { columns } from "./columns";
 import { DataTable } from "./data-table";
 import { DailyData } from "@/app/types/snakebite";
 import { TranslationProvider } from "@/components/TranslationContext";
+import Image from "next/image";
+import { authPlugins } from "mysql2";
 
 export default function DailyCasesPage() {
   const [data, setData] = useState<DailyData[]>([]);
@@ -62,8 +64,20 @@ export default function DailyCasesPage() {
   return (
     <TranslationProvider>
       <div className="container mx-auto py-10">
-        <h1 className="text-2xl font-bold mb-6">Daily Cases</h1>
-        <DataTable columns={columns} data={data} onDataImport={handleDataImport}/>
+        <div className="flex items-center mb-6">
+          <Image
+            src={"/logo-white_h.jpeg"}
+            alt="Snakebite Logo"
+            width={120}
+            height={80}
+          />
+        <h1 className="text-2xl font-bold ml-6">Daily Cases</h1>
+        </div>
+        <DataTable
+          columns={columns}
+          data={data}
+          onDataImport={handleDataImport}
+        />
       </div>
     </TranslationProvider>
   );

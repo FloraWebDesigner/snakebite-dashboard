@@ -48,8 +48,8 @@ export async function GET() {
           const formattedDailyDetails = dailyDetails[0].map(item => ({
             ...item,
             Date: formatDate(item.Date),
-            Age: item.Age ? Number(item.Age) : null,
-            SAV_Volumn: item.SAV_Volumn ? Number(item.SAV_Volumn) : null
+            Age: item.Age !== null ? Number(item.Age) : null,
+  SAV_Volumn: item.SAV_Volumn !== null ? Number(item.SAV_Volumn) : 0
           }));
       
           const monthlyData = Array.isArray(monthlyResult[0]) 
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
   try {
     const db = await getDBConnection();
     const formData = await request.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get('file') as File | null;
 
     if (!file) {
       return NextResponse.json(
@@ -100,122 +100,150 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(bytes);
     const csvString = buffer.toString('utf-8');
 
-    const csvData = await new Promise<any[]>((resolve, reject) => {
+    const { data: csvData } = await new Promise<Papa.ParseResult<unknown>>((resolve, reject) => {
       parse(csvString, {
         header: true,
         skipEmptyLines: true,
-        transformHeader: header => header.trim(),
-        complete: (results) => resolve(results.data),
-        error: (error: any) => reject(error)
+        transformHeader: (header: string) => header.trim(),
+        complete: (results) => resolve(results),
+        error: (error: Error) => reject(error),
+        transform: (value: string, field: string) => {
+          if (field === 'Date of arrival' || field === 'Date') {
+            return parseDate(value);
+          }
+          return value === '' ? null : value;
+        }
       });
     });
 
+    const columnMap: Record<string, keyof SnakebiteDbRecord> = {
+      'Date': 'Date of arrival',
+      'Sex': 'Sex',
+      'Age': 'Age',
+      'Snake Type': 'Snake Type',
+      'Snake_Type': 'Snake Type',
+      'SAV_Volumn': 'SAV Volumn',
+      'SAV Volumn': 'SAV Volumn',
+      'Bite Location': 'Location (Updated)',
+      'Bite_Location': 'Location (Updated)',
+      'Arrival Period - Num(Updated)': 'Arrival Period - Num(Updated)',
+      'Arrival Period (Updated)': 'Arrival Period (Updated)',
+      'Traditional medicine or touniquet (Updated)': 'Traditional medicine or touniquet (Updated)',
+      'Diagnostic': 'DIAGNOSTIC',
+      'Outcome': 'Outcome (Updated)',
+      'Age Group': 'Age Group',
+      'Age_Group': 'Age Group'
+    };
     
-    const cleanData: SnakebiteDbRecord[] = csvData.map(item => ({
-      'Date of arrival': item['Date of arrival'] 
-    ? new Date(item['Date of arrival']).toISOString().split('T')[0] 
-    : null,
-      'Sex': item.Sex ? String(item.Sex) : null,
-      'Age': item.Age ? parseInt(item.Age as string) : null,
-      'Location': item.Location || null,
-      'Arrival Period': item['Arrival Period'] || null,
-      'General': item.General || null,
-      'General 2': item['General 2'] || null,
-      'Snake Type': item['Snake Type'] || null,
-      'SAV Effect': item['SAV Effect'] || null,
-      'Clinical findings': item['Clinical findings'] || null,
-      'Clinical findings3': item['Clinical findings3'] || null,
-      'Clinical findings4': item['Clinical findings4'] || null,
-      'Clinical findings5': item['Clinical findings5'] || null,
-      'Clinical findings6': item['Clinical findings6'] || null,
-      'Clinical findings7': item['Clinical findings7'] || null,
-      'Clinical findings8': item['Clinical findings8'] || null,
-      'Clinical findings9': item['Clinical findings9'] || null,
-      'Clinical findings10': item['Clinical findings10'] || null,
-      'Clinical findings11': item['Clinical findings11'] || null,
-      'Vital signs': item['Vital signs'] || null,
-      'Vital signs12': item['Vital signs12'] || null,
-      'Vital signs13': item['Vital signs13'] || null,
-      'Vital signs14': item['Vital signs14'] || null,
-      'Vital signs15': item['Vital signs15'] || null,
-      'Vital signs16': item['Vital signs16'] || null,
-      'Vital signs17': item['Vital signs17'] || null,
-      'Tests performed': item['Tests performed'] || null,
-      'Tests performed18': item['Tests performed18'] || null,
-      'Presumptive': item.Presumptive || null,
-      'SAV Nums': item['SAV Nums'] || null,
-      'Treatment given19': item['Treatment given19'] || null,
-      'SAV Volumn': item['SAV Volumn'] || null,
-      'Treatment given21': item['Treatment given21'] || null,
-      'Treatment given22': item['Treatment given22'] || null,
-      'Treatment given23': item['Treatment given23'] || null,
-      'Column24': item.Column24 || null,
-      'Column25': item.Column25 || null,
-      'Column26': item.Column26 || null,
-      'Outcome': item.Outcome || null,
-      "Plainte l'arrivé": item["Plainte l'arrivé"] || null,
-      'Column27': item.Column27 || null,
-      'Column28': item.Column28 || null,
-      'Location (Updated)': item['Location (Updated)'] || null,
-      'Arrival Period - Num(Updated)': item['Arrival Period - Num(Updated)'] || null,
-      'Arrival Period29': item['Arrival Period29'] || null,
-      'Arrival Period (Updated)': item['Arrival Period (Updated)'] || null,
-      'Traditional medicine or touniquet': item['Traditional medicine or touniquet'] || null,
-      'Traditional medicine or touniquet (Updated)': item['Traditional medicine or touniquet (Updated)'] || null,
-      'DIAGNOSTIC': item.DIAGNOSTIC || null,
-      'Outcome (Updated)': item['Outcome (Updated)'] || null,
-      'Age Group': item['Age Group'] || null
-    }));
+    const cleanData = (csvData as any[]).map((item: any) => {
+      const record: Partial<SnakebiteDbRecord> = {};
+      
+      for (const [csvHeader, dbColumn] of Object.entries(columnMap)) {
+        let value = item[csvHeader] ?? item[dbColumn];
 
-    const columns = [
-      'Date of arrival', 'Sex', 'Age', 'Location', 'Arrival Period', 'General', 
-      'General 2', 'Snake Type', 'SAV Effect', 'Clinical findings', 'Clinical findings3',
-      'Clinical findings4', 'Clinical findings5', 'Clinical findings6', 'Clinical findings7',
-      'Clinical findings8', 'Clinical findings9', 'Clinical findings10', 'Clinical findings11',
-      'Vital signs', 'Vital signs12', 'Vital signs13', 'Vital signs14', 'Vital signs15',
-      'Vital signs16', 'Vital signs17', 'Tests performed', 'Tests performed18', 'Presumptive',
-      'SAV Nums', 'Treatment given19', 'SAV Volumn', 'Treatment given21', 'Treatment given22',
-      'Treatment given23', 'Column24', 'Column25', 'Column26', 'Outcome', "Plainte l'arrivé",
-      'Column27', 'Column28', 'Location (Updated)', 'Arrival Period - Num(Updated)',
-      'Arrival Period29', 'Arrival Period (Updated)', 'Traditional medicine or touniquet',
-      'Traditional medicine or touniquet (Updated)', 'DIAGNOSTIC', 'Outcome (Updated)', 'Age Group'
+        if (value === 'NaN' || value === 'nan' || value === 'N/A') {
+          value = null;
+        }
+
+        if (dbColumn === 'Date of arrival') {
+          record[dbColumn] = parseDate(value);
+        } 
+        else if (dbColumn === 'SAV Volumn') {
+  // 特殊处理SAV Volumn字段
+  if (value === null || value === undefined || value === '' || isNaN(value)) {
+    (record as any)[dbColumn] = 0; 
+  } else {
+    const numValue = Number(value);
+    (record as any)[dbColumn] = isNaN(numValue) ? 0 : numValue;
+  }
+} 
+        else if (dbColumn === 'Age' ||  dbColumn === 'Arrival Period - Num(Updated)') {
+          if (value === '0') {
+    (record as any)[dbColumn] = 0;
+  } 
+          // Convert numeric fields, handling empty/NaN cases
+          else if (value === null || value === undefined || value === '') {
+            (record as any)[dbColumn] = null;
+          } else {
+            const numValue = Number(value);
+            (record as any)[dbColumn] = isNaN(numValue) ? null : numValue;
+          }
+        } else {
+          // For string fields, convert to null if empty
+          (record as any)[dbColumn] = value != null ? String(value) : null;
+        }
+      }
+      
+      return record as SnakebiteDbRecord;
+    });
+
+    const validData = cleanData.filter((item: SnakebiteDbRecord) => 
+      item['Date of arrival'] || item.Sex || item.Age || item['Snake Type']
+    );
+
+    const essentialColumns: Array<keyof SnakebiteDbRecord> = [
+      'Date of arrival', 'Sex', 'Age', 'Snake Type', 'SAV Volumn',
+      'Location (Updated)', 'Arrival Period - Num(Updated)',
+      'Arrival Period (Updated)', 'Traditional medicine or touniquet (Updated)',
+      'DIAGNOSTIC', 'Outcome (Updated)', 'Age Group'
     ];
 
     const batchSize = 100;
-    let insertedCount = 0;
-    
-    for (let i = 0; i < cleanData.length; i += batchSize) {
-      const batch = cleanData.slice(i, i + batchSize);
-      const values = batch.map(item => columns.map(col => (item as any)[col]));
+    for (let i = 0; i < validData.length; i += batchSize) {
+      const batch = validData.slice(i, i + batchSize);
+      const values = batch.map((item: SnakebiteDbRecord) => 
+        essentialColumns.map(col => {
+          const val = item[col];
+          // Ensure we don't send undefined or NaN to the database
+          return val === undefined || (typeof val === 'number' && isNaN(val)) ? null : val;
+        })
+      );
       
       await db.query(`
         INSERT INTO snakebite_2019 
-        (${columns.map(col => `\`${col}\``).join(', ')})
+        (${essentialColumns.map(col => `\`${col}\``).join(', ')})
         VALUES ?
       `, [values]);
-      
-      insertedCount += batch.length;
     }
 
-    return NextResponse.json(
-      { 
-        success: true, 
-        inserted: insertedCount,
-        warnings: cleanData.length - insertedCount
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({
+      success: true,
+      inserted: validData.length,
+      sample: validData.slice(0, 3) 
+    });
 
   } catch (err) {
-    console.error('Database import error:', err);
+    console.error('Import error:', err);
     return NextResponse.json(
       { 
         error: "Import failed",
         message: err instanceof Error ? err.message : 'Unknown error',
-        ...(process.env.NODE_ENV === 'development' ? { stack: err instanceof Error ? err.stack : null } : {})
+        details: process.env.NODE_ENV === 'development' ? err : undefined
       },
       { status: 500 }
     );
   }
 }
 
+function parseDate(dateStr: any): string | null {
+  if (!dateStr) return null;
+  
+  const formats = [
+    'yyyy-MM-dd', 
+    'MM/dd/yyyy', 
+    'dd-MM-yyyy',
+    'yyyy/MM/dd',
+    'dd/MM/yyyy'
+  ];
+  
+  for (const format of formats) {
+    try {
+      const parsed = new Date(dateStr);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString().split('T')[0];
+      }
+    } catch {}
+  }
+  
+  return null;
+}
